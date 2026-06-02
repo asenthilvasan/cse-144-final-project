@@ -25,7 +25,7 @@ class UnlabelledDataset(torch.utils.data.Dataset):
         return len(self.paths)
 
 
-def preprocess_data():
+def preprocess_data(val_fraction=0.0):
     # Augmentation + normalization for train but just resize/normalize for val/test.
     # SWAG ViT-B/16 expects 384px input with BICUBIC interpolation.
     # Normalization is the standard ImageNet mean/std
@@ -53,23 +53,32 @@ def preprocess_data():
     train_full_aug = datasets.ImageFolder(os.path.join(data_dir, 'train'), train_transform)
     train_full_eval = datasets.ImageFolder(os.path.join(data_dir, 'train'), eval_transform)
 
-    val_fraction = 0.2
-    n_total = len(train_full_aug)
-    n_val = int(n_total * val_fraction)
-    n_train = n_total - n_val
-    train_indices, val_indices = torch.utils.data.random_split(
-        range(n_total), [n_train, n_val]
-    )
-
     image_datasets = {
-        'train': torch.utils.data.Subset(train_full_aug, train_indices.indices),
-        'val':   torch.utils.data.Subset(train_full_eval, val_indices.indices),
-        'test':  UnlabelledDataset(os.path.join(data_dir, 'test'), eval_transform),
+        'test': UnlabelledDataset(os.path.join(data_dir, 'test'), eval_transform),
     }
 
-    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=16,
-                                                shuffle=(x == 'train'), num_workers=4)
-                for x in ['train', 'val', 'test']}
-    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test']}
+    if val_fraction > 0.0:
+        n_total = len(train_full_aug)
+        n_val = int(n_total * val_fraction)
+        n_train = n_total - n_val
+        train_indices, val_indices = torch.utils.data.random_split(
+            range(n_total), [n_train, n_val]
+        )
+
+        image_datasets['train'] = torch.utils.data.Subset(train_full_aug, train_indices.indices)
+        image_datasets['val'] = torch.utils.data.Subset(train_full_eval, val_indices.indices)
+    else:
+        image_datasets['train'] = train_full_aug
+
+    dataloaders = {
+        split: torch.utils.data.DataLoader(
+            image_datasets[split],
+            batch_size=16,
+            shuffle=(split == 'train'),
+            num_workers=4,
+        )
+        for split in image_datasets
+    }
+    dataset_sizes = {split: len(image_datasets[split]) for split in image_datasets}
 
     return dataloaders, dataset_sizes

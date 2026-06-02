@@ -34,8 +34,8 @@ def set_seed(seed: int = 42):
         print("Warning: could not enable full deterministic algorithms:", e)
 
 
-def run_model(unfrozen_layers):
-    dataloaders, dataset_sizes = preprocess_data()
+def run_model(unfrozen_layers, val_fraction=0.0):
+    dataloaders, dataset_sizes = preprocess_data(val_fraction=val_fraction)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device} device")
@@ -67,11 +67,12 @@ def run_model(unfrozen_layers):
                         num_epochs=num_epochs, batch_mix=batch_mix,
                         dataloaders=dataloaders, dataset_sizes=dataset_sizes, device=device)
 
-    # keep the best-val weights so predict.py can load them
+    # Keep the best validation checkpoint when validation is enabled,
+    # otherwise keep the final epoch weights so predict.py can load them.
     torch.save(model.state_dict(), 'model.pth')
     print('Saved trained weights to model.pth')
 
 
 if __name__ == "__main__":
     set_seed(42)
-    run_model(1)
+    run_model(1, val_fraction=0.0)
