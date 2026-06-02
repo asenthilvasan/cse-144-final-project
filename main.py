@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
+from torchvision.transforms import v2
 
 from model import build_model, freeze_backbone
 from train import train_model
@@ -52,12 +53,18 @@ def run_model(unfrozen_layers):
         lr=1e-4, weight_decay=0.05,
     )
 
-    num_epochs = 20
+    num_epochs = 30
     # Cosine anneals the LR smoothly to ~0 over the whole run.
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
+    # from https://docs.pytorch.org/vision/main/auto_examples/transforms/plot_cutmix_mixup.html
+    batch_mix = v2.RandomChoice([
+        v2.MixUp(alpha=0.2, num_classes=100),
+        v2.CutMix(alpha=1.0, num_classes=100),
+    ])
+
     model = train_model(model, criterion, optimizer, scheduler,
-                        num_epochs=num_epochs, mixup_alpha=0.2,
+                        num_epochs=num_epochs, batch_mix=batch_mix,
                         dataloaders=dataloaders, dataset_sizes=dataset_sizes, device=device)
 
     # keep the best-val weights so predict.py can load them

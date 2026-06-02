@@ -2,20 +2,13 @@ import os
 import time
 from tempfile import TemporaryDirectory
 
-import numpy as np
 import torch
 
 
-def mixup_data(x, y, alpha, device):
-    """Blend a batch with a shuffled copy of itself (mixup)."""
-    lam = float(np.random.beta(alpha, alpha)) if alpha > 0 else 1.0
-    index = torch.randperm(x.size(0), device=device)
-    mixed_x = lam * x + (1 - lam) * x[index]
-    return mixed_x, y, y[index], lam
-
-
 # Training loop adapted from the PyTorch transfer-learning tutorial.
-def train_model(model, criterion, optimizer, scheduler, num_epochs=25, dataset_sizes=None, dataloaders=None, device=None, mixup_alpha=0.0):
+# batch_mix, if given, is a torchvision v2 MixUp/CutMix transform applied to
+# each training batch (it returns mixed images + soft labels).
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, dataset_sizes=None, dataloaders=None, device=None, batch_mix=None):
     since = time.time()
 
     # Create a temporary directory to save training checkpoints
@@ -49,12 +42,13 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, dataset_s
 
                     # forward
                     # track history if only in train
-                    use_mixup = phase == 'train' and mixup_alpha > 0
+                    # MixUp/CutMix (train phase only) -> soft labels [B, num_classes]
+                    use_mix = phase == 'train' and batch_mix is not None
                     with torch.set_grad_enabled(phase == 'train'):
-                        if use_mixup:
-                            mixed, y_a, y_b, lam = mixup_data(inputs, labels, mixup_alpha, device)
+                        if use_mix:
+                            mixed, soft_labels = batch_mix(inputs, labels)
                             outputs = model(mixed)
-                            loss = lam * criterion(outputs, y_a) + (1 - lam) * criterion(outputs, y_b)
+                            loss = criterion(outputs, soft_labels)
                         else:
                             outputs = model(inputs)
                             loss = criterion(outputs, labels)
@@ -67,10 +61,9 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, dataset_s
 
                     # statistics
                     running_loss += loss.item() * inputs.size(0)
-                    if use_mixup:
-                        # accuracy against the dominant label set, weighted by lam
-                        running_corrects += (lam * torch.sum(preds == y_a.data)
-                                             + (1 - lam) * torch.sum(preds == y_b.data))
+                    if use_mix:
+                        # train acc vs the dominant (argmax) class of the mixed label
+                        running_corrects += torch.sum(preds == soft_labels.argmax(1))
                     else:
                         running_corrects += torch.sum(preds == labels.data)
                 if phase == 'train':
