@@ -1,5 +1,8 @@
 data/
 uv*
+evaluate.py
+model.pth
+saved_models/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
